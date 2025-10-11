@@ -7,6 +7,7 @@ use App\Models\Translation;
 use App\Models\TranslationKey;
 use App\Models\Locale;
 use App\Models\Tag;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -19,14 +20,28 @@ class TranslationService {
         $this->model = $model;
     }
 
+    
+
     public function grid($number_per_page) 
     {
+        $start = microtime(true);
         $data = $this->model->paginate($number_per_page); 
         $lists = Cache::remember('all_translations', now()->addMinutes(10), function () use ($data) {
             return $data; 
         });
 
-        return TranslationResource::collection($lists);
+        return response()->json([
+            'success' => true,
+            'message' => "Found {$lists->total()} translations in total",
+            'data' => TranslationResource::collection($lists),
+            'meta' => [
+                'current_page' => $lists->currentPage(),
+                'per_page' => $lists->perPage(),
+                'total' => $lists->total(),
+                'last_page' => $lists->lastPage(),
+                'latency' => microtime(true) - $start
+            ],
+        ]);
     }
 
     public function create(array $data) 
@@ -118,5 +133,112 @@ class TranslationService {
             ]);
         }
         
+    }
+
+    public function searchTranslations(array $filters)
+    {
+        $start = microtime(true);
+        $query = TranslationKey::with(['translations.locale', 'tags']);
+
+        if (!empty($filters['key'])) {
+            $query->where('key', 'like', '%' . $filters['key'] . '%');
+        }
+
+        if (!empty($filters['content'])) {
+            $query->whereHas('translations', function ($q) use ($filters) {
+                $q->whereFullText('content', $filters['content']);
+            });
+        }
+
+        if (!empty($filters['tags'])) {
+            $tags = is_array($filters['tags']) ? $filters['tags'] : [$filters['tags']];
+            $query->whereHas('tags', function ($q) use ($tags) {
+                $q->whereIn('name', $tags);
+            });
+        }
+
+        if (!empty($filters['locale'])) {
+            $query->whereHas('translations.locale', function ($q) use ($filters) {
+                $q->where('code', $filters['locale']);
+            });
+        }
+
+        if (isset($filters['has_description'])) {
+            if ($filters['has_description']) {
+                $query->whereNotNull('description');
+            } else {
+                $query->whereNull('description');
+            }
+        }
+
+        // Date range filters
+        if (!empty($filters['created_after'])) {
+            $query->where('created_at', '>=', $filters['created_after']);
+        }
+
+        if (!empty($filters['created_before'])) {
+            $query->where('created_at', '<=', $filters['created_before']);
+        }
+
+        if (!empty($filters['updated_after'])) {
+            $query->where('updated_at', '>=', $filters['updated_after']);
+        }
+
+        if (!empty($filters['updated_before'])) {
+            $query->where('updated_at', '<=', $filters['updated_before']);
+        }
+
+        // Sorting
+        $sortBy = $filters['sort_by'] ?? 'created_at';
+        $sortOrder = $filters['sort_order'] ?? 'desc';
+        $query->orderBy($sortBy, $sortOrder);
+
+        $translations = $query->paginate($filters['per_page'] ?? 15);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Found {$translations->total()} translations matching key pattern",
+            'data' => TranslationResource::collection($translations),
+            'meta' => [
+                'current_page' => $translations->currentPage(),
+                'per_page' => $translations->perPage(),
+                'total' => $translations->total(),
+                'last_page' => $translations->lastPage(),
+                'latency' => microtime(true) - $start
+            ],
+        ]);
+    }
+
+    public function searchByTags(array $tags, string $match = 'any')
+    {
+        $start = microtime(true);
+        $query = TranslationKey::with(['translations.locale', 'tags']);
+
+        if ($match === 'all') {
+            foreach ($tags as $tag) {
+                $query->whereHas('tags', function ($q) use ($tag) {
+                    $q->where('name', $tag);
+                });
+            }
+        } else {
+            $query->whereHas('tags', function ($q) use ($tags) {
+                $q->whereIn('name', $tags);
+            });
+        }
+
+        $translations =  $query->paginate(15);
+        
+        return response()->json([
+            'success' => true,
+            'message' => "Found {$translations->total()} translations with specified tags",
+            'data' => TranslationResource::collection($translations),
+            'meta' => [
+                'current_page' => $translations->currentPage(),
+                'per_page' => $translations->perPage(),
+                'total' => $translations->total(),
+                'last_page' => $translations->lastPage(),
+                'latency' => microtime(true) - $start
+            ],
+        ]);
     }
 }

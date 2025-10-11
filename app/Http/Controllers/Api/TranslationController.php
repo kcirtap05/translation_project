@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\SearchByKeyRequest;
+use App\Http\Requests\SearchByTagRequest;
 use App\Http\Requests\TranslationRequest;
 use App\Services\TranslationService;
 use Illuminate\Http\Request;
@@ -46,5 +48,32 @@ class TranslationController extends Controller
     public function destroy($id) 
     {
         return $this->service->delete($id);
+    }
+
+    public function searchByKey(SearchByKeyRequest $request)
+    {
+
+        $filters = [
+            'key' => $request->input('q'),
+            'per_page' => $request->input('per_page', 15),
+        ];
+
+        return $this->service->searchTranslations($filters);
+
+    }
+
+    public function searchByTags(SearchByTagRequest $request)
+    {
+
+        $filters = [
+            'tags' => $request->input('tags'),
+            'match' => $request->input('match', 'any'),
+            'per_page' => $request->input('per_page', 15),
+        ];
+
+        return $this->service->searchByTags(
+            $filters['tags'],
+            $filters['match']
+        );
     }
 }

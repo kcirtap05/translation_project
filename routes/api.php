@@ -22,6 +22,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/', [TranslationController::class, 'create']);
         Route::put('{uuid}', [TranslationController::class, 'update']);
         Route::delete('{uuid}', [TranslationController::class, 'destroy']);
+        Route::get('search/key', [TranslationController::class, 'searchByKey']);
+        Route::get('search/tags', [TranslationController::class, 'searchByTags']);
     });
     
     Route::prefix('locales')->group(function () {
