@@ -1,4 +1,6 @@
 ##
+
+php artisan make:command SetupDatabase  
 go to my github repo and clone the project
 
 https://github.com/kcirtap05/translation_project.git

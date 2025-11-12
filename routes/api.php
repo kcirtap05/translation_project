@@ -24,7 +24,8 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::delete('{uuid}', [TranslationController::class, 'destroy']);
         Route::get('search/key', [TranslationController::class, 'searchByKey']);
         Route::get('search/tags', [TranslationController::class, 'searchByTags']);
-    });
+        Route::get('search/x', [TranslationController::class, 'getX']);
+    }); 
     
     Route::prefix('locales')->group(function () {
         Route::get('/', [LocaleController::class, 'grid']);

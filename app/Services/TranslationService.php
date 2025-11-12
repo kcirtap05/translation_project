@@ -12,15 +12,13 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
-class TranslationService {
+class TranslationService extends BaseService {
     private $model;
 
     public function __construct(Translation $model)
     {
         $this->model = $model;
     }
-
-    
 
     public function grid($number_per_page) 
     {
@@ -30,25 +28,12 @@ class TranslationService {
             return $data; 
         });
 
-        return response()->json([
-            'success' => true,
-            'message' => "Found {$lists->total()} translations in total",
-            'data' => TranslationResource::collection($lists),
-            'meta' => [
-                'current_page' => $lists->currentPage(),
-                'per_page' => $lists->perPage(),
-                'total' => $lists->total(),
-                'last_page' => $lists->lastPage(),
-                'latency' => microtime(true) - $start
-            ],
-        ]);
+        return $this->apiResponse(200, "Found {$lists->total()} translations in total", $lists, 200, '', '', $start);
     }
 
     public function create(array $data) 
     {
-        try {
-            DB::beginTransaction();
-
+        return $this->executeFunction(function() use ($data) {
 
             $translationKey = TranslationKey::create([
                 'key' => $data['key'],
@@ -61,7 +46,7 @@ class TranslationService {
         
             $translationKey->tags()->sync($tagIds);
 
-    
+
             foreach ($data['translations'] as $localeCode => $content) {
                 $locale = Locale::firstOrCreate(['code' => $localeCode], ['name' => ucfirst($localeCode)]);
 
@@ -71,68 +56,35 @@ class TranslationService {
                     'content' => $content,
                 ]);
             }
-    
-            DB::commit();
 
             Cache::forget('all_translations'); 
 
             return new TranslationResource($data);
-
-        } catch (Throwable $e) {
-            DB::rollback();
-            return response()->json([
-                'code'   => 500,
-                'status'  => 'fail',
-                'message' => 'UNHANDLED EXCEPTION',
-                'data'    => $e->getMessage(),
-            ]);
-        }
+        });
     }
 
     public function update($id,$data) 
     {
-        try {
+        return $this->executeFunction(function() use ($id, $data) {
 
-            DB::beginTransaction();
             $task_data = tap($this->model->find($id))->update($data);
-            DB::commit();
 
             Cache::forget('all_translations'); 
 
             return new TranslationResource($task_data);
-        } catch (Throwable $e) {
-            DB::rollback();
-            return response()->json([
-                'code'   => 500,
-                'status'  => 'fail',
-                'message' => 'UNHANDLED EXCEPTION',
-                'data'    => $e->getMessage(),
-            ]);
-        }
+        });
     }
 
     public function delete($id) 
     {
-        try {
+        return $this->executeFunction(function() use ($id) {
 
-            DB::beginTransaction();
             $data = tap($this->model->find($id))->delete();
-            DB::commit();
 
             Cache::forget('all_translations'); 
 
             return new TranslationResource($data);
-
-        } catch (Throwable $e) {
-            DB::rollback();
-            return response()->json([
-                'code'   => 500,
-                'status'  => 'fail',
-                'message' => 'UNHANDLED EXCEPTION',
-                'data'    => $e->getMessage(),
-            ]);
-        }
-        
+        });
     }
 
     public function searchTranslations(array $filters)
@@ -195,18 +147,10 @@ class TranslationService {
 
         $translations = $query->paginate($filters['per_page'] ?? 15);
 
-        return response()->json([
-            'success' => true,
-            'message' => "Found {$translations->total()} translations matching key pattern",
-            'data' => TranslationResource::collection($translations),
-            'meta' => [
-                'current_page' => $translations->currentPage(),
-                'per_page' => $translations->perPage(),
-                'total' => $translations->total(),
-                'last_page' => $translations->lastPage(),
-                'latency' => microtime(true) - $start
-            ],
-        ]);
+        $data = TranslationResource::collection($translations);
+
+        return $this->apiResponse(200, "Successful", $data, 200, '', '', $start);
+
     }
 
     public function searchByTags(array $tags, string $match = 'any')
@@ -225,20 +169,67 @@ class TranslationService {
                 $q->whereIn('name', $tags);
             });
         }
-
         $translations =  $query->paginate(15);
-        
-        return response()->json([
-            'success' => true,
-            'message' => "Found {$translations->total()} translations with specified tags",
-            'data' => TranslationResource::collection($translations),
-            'meta' => [
-                'current_page' => $translations->currentPage(),
-                'per_page' => $translations->perPage(),
-                'total' => $translations->total(),
-                'last_page' => $translations->lastPage(),
-                'latency' => microtime(true) - $start
-            ],
-        ]);
+
+        $data = TranslationResource::collection($translations);
+
+        return $this->apiResponse(200, "Found {$translations->total()} translations with specified tags", $data, 200, '', '', $start);
+    }
+
+    public function advancedSearch($filters)
+    {
+        return $this->searchTranslations($filters);
+    }
+
+    public function binarySearch($arr, $low, $high, $x) {
+        // x = value to be search
+        // low = starting index
+        // high = ending index
+        // arr = array to be search
+        while ($low <= $high) {
+
+            $mid = ceil($low + ($high - $low) / 2);
+
+            if ($arr[$mid] == $x) {
+                return floor($mid); // x 
+            }
+
+            if ($arr[$mid] < $x) {
+                $low = $mid + 1; // x is in right half
+            } else {
+                $high = $mid - 1; // x is in left half
+            }
+        }
+
+        return -1; // x is not present in array
+    }
+
+    public function linearSearch($arr, $x) {
+        $n = count($arr);
+        for ($i = 0; $i < $n; $i++) {
+            if ($arr[$i] == $x) {
+                return $i; // x found at index i
+            }
+        }
+        return -1; // x not found
+    }
+
+    public function getX($data) {
+        $arr = TranslationKey::orderBy('id','asc')->pluck('id')->toArray();
+        // $arr = array(2, 3, 4, 10, 40);
+        // return $arr;
+        $low = 0;
+        $high = count($arr) - 1;
+        $x = $data->input('x'); 
+
+        // $result = $this->linearSearch($arr, $x);
+        $result = $this->binarySearch($arr, $low, $high, $x);
+
+        if(($result == -1)) {
+            return "Element is not present in array";
+        }
+        else {
+            return "Element is present at index ".$result;
+        }
     }
 }

@@ -76,4 +76,17 @@ class TranslationController extends Controller
             $filters['match']
         );
     }
+
+    public function advancedSearch(Request $request)
+    {
+
+        return $this->service->advancedSearch($request);
+        
+    }
+
+    public function getX(Request $request)
+    {
+        return $this->service->getX($request);
+        
+    }
 }
